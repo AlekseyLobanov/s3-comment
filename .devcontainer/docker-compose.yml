@@ -1,0 +1,57 @@
+version: '3'
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        VARIANT: 1.17
+        # Optional Node.js version to install
+        NODE_VERSION: "lts/*"
+
+    volumes:
+      - ..:/workspace:cached  
+
+    # Overrides default command so things don't shut down after the process ends.
+    command: sleep infinity
+
+    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+    # network_mode: service:redis
+
+    # Uncomment the next line to use a non-root user for all processes.
+    user: vscode
+
+    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally.
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+  redis:
+    image: redis
+    restart: unless-stopped
+    ports:
+    - "6379:6379"
+  
+  minio:
+    command: server /data --console-address ":9001"
+    image: minio/minio
+    restart: unless-stopped
+    volumes:
+      - minio-data:/data
+    ports:
+    - "9000:9000"
+    - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: root
+      MINIO_ROOT_PASSWORD: topsecret
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg12
+    restart: unless-stopped
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: mini-short
+      POSTGRES_PASSWORD: postgres
+
+volumes:
+  timescale-data:
+  minio-data:
