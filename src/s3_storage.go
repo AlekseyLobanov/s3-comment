@@ -23,7 +23,7 @@ type S3CommentsBackend struct {
 	metricOperations *prometheus.CounterVec
 }
 
-func NewS3CommentsStorage() (*S3CommentsBackend, error) {
+func createMinioClient() *minio.Client {
 	endpoint := "minio:9000"
 	accessKeyID := "root"
 	secretAccessKey := "topsecret"
@@ -38,10 +38,13 @@ func NewS3CommentsStorage() (*S3CommentsBackend, error) {
 		log.Fatalln(err)
 	}
 
-	log.Printf("%#v\n", minioClient) // minioClient is now setup
+	log.Printf("New Minio: %#v\n", minioClient) // minioClient is now setup
+	return minioClient
+}
 
+func NewS3CommentsStorage() (*S3CommentsBackend, error) {
 	return &S3CommentsBackend{
-		minio: minioClient,
+		minio: nil,
 		metricOperations: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "s3_requests",
 			Help: "Number of S3 requests to comments storage",
@@ -86,7 +89,15 @@ func getUriObjectName(uri string) string {
 	return fmt.Sprintf("pages/%v.json", CalculateUserHash(uri, "fakeTODO"))
 }
 
+func (backend *S3CommentsBackend) minioLazyInit() {
+	if backend.minio == nil {
+		backend.minio = createMinioClient()
+	}
+}
+
 func (backend *S3CommentsBackend) saveCommentData(commentData *CommentModelOutput) error {
+	backend.minioLazyInit()
+
 	commentBytes, _ := json.Marshal(commentData)
 
 	objectReader := bytes.NewReader(commentBytes)
@@ -110,6 +121,7 @@ func (backend *S3CommentsBackend) saveCommentData(commentData *CommentModelOutpu
 }
 
 func (backend *S3CommentsBackend) GetPageComments(uri string) ([]int64, error) {
+	backend.minioLazyInit()
 	object, err := backend.minio.GetObject(
 		context.Background(),
 		BUCKET,
@@ -148,6 +160,7 @@ func (backend *S3CommentsBackend) GetPageComments(uri string) ([]int64, error) {
 }
 
 func (backend *S3CommentsBackend) AddCommentToPage(uri string, commentId int64) error {
+	backend.minioLazyInit()
 	currentComments, err := backend.GetPageComments(uri)
 	if err != nil {
 		log.Printf("Error %v with loading comments for page %v\n", err.Error(), uri)
@@ -188,6 +201,7 @@ func (backend *S3CommentsBackend) UpdateComment(commentData *CommentModelOutput)
 }
 
 func (backend *S3CommentsBackend) GetComment(commentId int64) (*CommentModelOutput, error) {
+	backend.minioLazyInit()
 	object, err := backend.minio.GetObject(
 		context.Background(),
 		BUCKET,
