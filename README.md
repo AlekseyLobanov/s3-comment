@@ -1,4 +1,7 @@
 # s3-comment
+
+[![codecov](https://codecov.io/gh/AlekseyLobanov/s3-comment/branch/master/graph/badge.svg?token=GvzxGkpUHS)](https://codecov.io/gh/AlekseyLobanov/s3-comment)
+
 I had few reasonris to write this project:
 1. Something like guest book, because every developer should create it.
 2. Is it possible to increase performance of Python application just with replacing it with Go?
