@@ -16,23 +16,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const BUCKET = "s3-comment"
-
 type S3CommentsBackend struct {
 	minio            *minio.Client
+	config           MinioConfig
 	metricOperations *prometheus.CounterVec
 }
 
-func createMinioClient() *minio.Client {
-	endpoint := "minio:9000"
-	accessKeyID := "root"
-	secretAccessKey := "topsecret"
-	useSSL := false
-
-	// Initialize minio client object.
-	minioClient, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
-		Secure: useSSL,
+func createMinioClient(config *MinioConfig) *minio.Client {
+	minioClient, err := minio.New(config.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
+		Secure: config.Secure,
 	})
 	if err != nil {
 		log.Fatalln(err)
@@ -42,9 +35,10 @@ func createMinioClient() *minio.Client {
 	return minioClient
 }
 
-func NewS3CommentsStorage() (*S3CommentsBackend, error) {
+func NewS3CommentsStorage(config MinioConfig) (*S3CommentsBackend, error) {
 	return &S3CommentsBackend{
-		minio: nil,
+		minio:  nil,
+		config: config,
 		metricOperations: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "s3_requests",
 			Help: "Number of S3 requests to comments storage",
@@ -91,7 +85,7 @@ func getUriObjectName(uri string) string {
 
 func (backend *S3CommentsBackend) minioLazyInit() {
 	if backend.minio == nil {
-		backend.minio = createMinioClient()
+		backend.minio = createMinioClient(&backend.config)
 	}
 }
 
@@ -104,7 +98,7 @@ func (backend *S3CommentsBackend) saveCommentData(commentData *CommentModelOutpu
 
 	uploadInfo, err := backend.minio.PutObject(
 		context.Background(),
-		BUCKET,
+		backend.config.Bucket,
 		getCommetObjectName(commentData.Id),
 		objectReader,
 		int64(len(commentBytes)),
@@ -124,7 +118,7 @@ func (backend *S3CommentsBackend) GetPageComments(uri string) ([]int64, error) {
 	backend.minioLazyInit()
 	object, err := backend.minio.GetObject(
 		context.Background(),
-		BUCKET,
+		backend.config.Bucket,
 		getUriObjectName(uri),
 		minio.GetObjectOptions{},
 	)
@@ -173,7 +167,7 @@ func (backend *S3CommentsBackend) AddCommentToPage(uri string, commentId int64) 
 
 	uploadInfo, err := backend.minio.PutObject(
 		context.Background(),
-		BUCKET,
+		backend.config.Bucket,
 		getUriObjectName(uri),
 		objectReader,
 		int64(len(commentBytes)),
@@ -204,7 +198,7 @@ func (backend *S3CommentsBackend) GetComment(commentId int64) (*CommentModelOutp
 	backend.minioLazyInit()
 	object, err := backend.minio.GetObject(
 		context.Background(),
-		BUCKET,
+		backend.config.Bucket,
 		getCommetObjectName(int64(commentId)),
 		minio.GetObjectOptions{},
 	)

@@ -19,8 +19,14 @@ type SimpleCommentsLogic struct {
 	storage       CommentsStorageInterface
 }
 
-func GetCommentsLogic() *SimpleCommentsLogic {
-	storageS3, err := NewS3CommentsStorage()
+func GetCommentsLogic(config ApplicationConfig) *SimpleCommentsLogic {
+	var storageS3 *S3CommentsBackend = nil
+	var err error
+	if config.Minio != nil {
+		storageS3, err = NewS3CommentsStorage(*config.Minio)
+	} else {
+		log.Printf("Minio disabled")
+	}
 	storageMemory, _ := NewMemoryStorageLinked(storageS3)
 	if err != nil {
 		log.Fatalf("Unable to init comments storage, error: %v", err.Error())

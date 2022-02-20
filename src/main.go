@@ -36,7 +36,7 @@ func likeDislikeHandler(c *gin.Context, backendHandler func(int64) (int64, int64
 	})
 }
 
-func GetGinApp() *gin.Engine {
+func GetGinApp(config ApplicationConfig) *gin.Engine {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
@@ -53,11 +53,10 @@ func GetGinApp() *gin.Engine {
 	metricsMonitor := GetPrometheusHandler()
 	metricsMonitor.Use(r)
 
-	// commentsBackend, _ := NewMemoryCommentsStorage()
-	commentsBackend := GetCommentsLogic()
+	commentsBackend := GetCommentsLogic(config)
 
-	r.Static("/js", "../static/js")
-	r.Static("/css", "../static/css")
+	r.Static("/js", "./static/js")
+	r.Static("/css", "./static/css")
 
 	r.OPTIONS("/count", func(c *gin.Context) {
 		c.String(200, "")
@@ -76,7 +75,6 @@ func GetGinApp() *gin.Engine {
 				"error": "No uri in query",
 			})
 		}
-		log.Printf("Comments request for %v\n", uri)
 		comments := commentsBackend.GetComments(uri, 10)
 		c.PureJSON(200, gin.H{
 			"id":             nil,
@@ -136,6 +134,6 @@ func GetGinApp() *gin.Engine {
 func main() {
 	fmt.Printf("s3-comment, builded with Go %s\n", runtime.Version())
 
-	app := GetGinApp()
+	app := GetGinApp(ReadConfigFromEnvs())
 	app.Run("0.0.0.0:" + strconv.Itoa(APPLICATION_PORT))
 }
