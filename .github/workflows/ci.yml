@@ -19,8 +19,7 @@ jobs:
     services:
       # Label used to access the service container
       minio:
-        command: server /data --console-address ":9001"
-        image: minio/minio
+        image: bitnami/minio:latest
         env:
-          MINIO_ROOT_USER: root
-          MINIO_ROOT_PASSWORD: topsecret
+          MINIO_ACCESS_KEY: root
+          MINIO_SECRET_KEY: topsecret
