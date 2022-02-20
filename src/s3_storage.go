@@ -32,6 +32,23 @@ func createMinioClient(config *MinioConfig) *minio.Client {
 	}
 
 	log.Printf("New Minio: %#v\n", minioClient) // minioClient is now setup
+	bucketExists, err := minioClient.BucketExists(context.Background(), config.Bucket)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if !bucketExists {
+		log.Printf("Bucket %v not exists, creating", config.Bucket)
+		err := minioClient.MakeBucket(
+			context.Background(),
+			config.Bucket,
+			minio.MakeBucketOptions{
+				Region:        "",
+				ObjectLocking: false,
+			})
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
 	return minioClient
 }
 
