@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,6 +17,18 @@ import (
 
 func s(val string) *string {
 	return &val
+}
+
+var floatType = reflect.TypeOf(float64(0))
+
+func getFloat(unk interface{}) (float64, error) {
+	v := reflect.ValueOf(unk)
+	v = reflect.Indirect(v)
+	if !v.Type().ConvertibleTo(floatType) {
+		return 0, fmt.Errorf("cannot convert %v to float64", v.Type())
+	}
+	fv := v.Convert(floatType)
+	return fv.Float(), nil
 }
 
 func testPreview(t *testing.T, app *gin.Engine) {
@@ -91,12 +105,30 @@ func TestEngineWithIntegrations(t *testing.T) {
 
 	assert.Equal(t, 201, w.Code)
 	resultBody := strings.TrimSpace(w.Body.String())
-	fmt.Printf("Result body %v\n", resultBody)
 	var resultModel CommentModelOutput
-	// var resultModel map[string]interface{}
 
 	json.Unmarshal([]byte(resultBody), &resultModel)
-	fmt.Printf("Result %v\n", resultModel)
 
 	assert.Equal(t, "Test user Alex", *resultModel.Author)
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(
+		"GET",
+		"/?uri=example.com",
+		nil,
+	)
+	app.ServeHTTP(w, req)
+	assert.Equal(t, 200, w.Code)
+	allPageCommentsBody := strings.TrimSpace(w.Body.String())
+	var pageCommentsData map[string]interface{}
+	json.Unmarshal([]byte(allPageCommentsBody), &pageCommentsData)
+
+	totalReplies, exists := pageCommentsData["total_replies"]
+	assert.True(t, exists)
+	totalRepliesTyped, err := getFloat(totalReplies)
+	assert.Nil(t, err)
+	assert.True(t, math.Abs(1-totalRepliesTyped) < 0.1)
+
+	// allPageComments, exists := pageCommentsData["replies"]
+	assert.True(t, exists)
 }
