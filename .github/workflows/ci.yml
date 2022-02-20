@@ -14,6 +14,8 @@ jobs:
           go-version: '1.17'
       - name: Run coverage
         run: TESTS_ENABLE_INTEGRATIONS=1 go test -race -coverprofile=coverage.txt -covermode=atomic ./src
+        env:
+          S3_ENDPOINT: localhost:9000
       - name: Upload coverage to Codecov
         run: bash <(curl -s https://codecov.io/bash)
     services:
@@ -23,3 +25,6 @@ jobs:
         env:
           MINIO_ACCESS_KEY: root
           MINIO_SECRET_KEY: topsecret
+        ports:
+          - 9000:9000
+
