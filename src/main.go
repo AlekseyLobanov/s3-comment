@@ -30,6 +30,8 @@ func likeDislikeHandler(c *gin.Context, backendHandler func(int64) (int64, int64
 		})
 		return
 	}
+	// 200 status is not good for POST REST request,
+	// but expected from isso frontend
 	c.PureJSON(200, gin.H{
 		"likes":    likes,
 		"dislikes": dislikes,
