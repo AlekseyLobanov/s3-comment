@@ -110,7 +110,7 @@ func TestEngineWithoutIntegrations(t *testing.T) {
 	})
 }
 
-func postComment(t *testing.T, app *gin.Engine, inputComment *CommentModelInput, uri string) CommentModelOutput {
+func prePostComment(t *testing.T, app *gin.Engine, inputComment *CommentModelInput, uri string) (int, string) {
 	inputCommentData, err := json.Marshal(inputComment)
 	assert.Nil(t, err)
 	req, _ := http.NewRequest(
@@ -121,11 +121,15 @@ func postComment(t *testing.T, app *gin.Engine, inputComment *CommentModelInput,
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
 
-	assert.Equal(t, 201, w.Code)
-	resultBody := strings.TrimSpace(w.Body.String())
+	return w.Code, strings.TrimSpace(w.Body.String())
+}
+
+func postComment(t *testing.T, app *gin.Engine, inputComment *CommentModelInput, uri string) CommentModelOutput {
+	code, body := prePostComment(t, app, inputComment, uri)
+	assert.Equal(t, 201, code)
 	var resultModel CommentModelOutput
 
-	json.Unmarshal([]byte(resultBody), &resultModel)
+	json.Unmarshal([]byte(body), &resultModel)
 
 	assert.Equal(t, *inputComment.Author, *resultModel.Author)
 	return resultModel
@@ -167,6 +171,26 @@ func likeDislikeComment(t *testing.T, app *gin.Engine, commentId int64, action s
 	return w.Code
 }
 
+func testNegativeLikeScenarios(t *testing.T, app *gin.Engine) {
+	t.Run("TestLikeNotExistingComment", func(t *testing.T) {
+		for _, action := range []string{"like", "dislike"} {
+			assert.Equal(t, 422, likeDislikeComment(t, app, 41, action))
+		}
+	})
+}
+
+func testNegativeParentScenario(t *testing.T, app *gin.Engine) {
+	t.Run("TestParentNotExists", func(t *testing.T) {
+		fakeParentComment := getFakeInputComment()
+		var parentId int64 = 5
+		fakeParentComment.Parent = &parentId
+		code, _ := prePostComment(t, app, &fakeParentComment, "example.com/parents")
+		assert.Equal(t, 400, code)
+
+		fakeParentsCount := getCommentsForPage(t, app, "example.com/parents")
+		assert.Equal(t, 0, fakeParentsCount)
+	})
+}
 func TestEngineWithIntegrations(t *testing.T) {
 	// really big single test for many things in one.
 	// Not a great solution, but simple enough for good covearge/code ratio
@@ -178,10 +202,8 @@ func TestEngineWithIntegrations(t *testing.T) {
 	app := GetGinApp(testConfig)
 	defer postDeleteS3Bucket(t, *testConfig.Minio)
 
-	// naive negative check
-	for _, action := range []string{"like", "dislike"} {
-		assert.Equal(t, 422, likeDislikeComment(t, app, 41, action))
-	}
+	testNegativeLikeScenarios(t, app)
+	testNegativeParentScenario(t, app)
 
 	inputComment := getFakeInputComment()
 	singleComment := postComment(t, app, &inputComment, "example.com/single")
