@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,6 +30,37 @@ func getFloat(unk interface{}) (float64, error) {
 	}
 	fv := v.Convert(floatType)
 	return fv.Float(), nil
+}
+
+func getFakeInputComment() CommentModelInput {
+	return CommentModelInput{
+		Author:       s("Test user Alex"),
+		Email:        s("alex@example.com"),
+		Website:      nil,
+		Text:         "Hello, _world_",
+		Parent:       nil,
+		Title:        nil,
+		Notification: 0,
+	}
+}
+
+func postDeleteS3Bucket(t *testing.T, config MinioConfig) {
+	client := createMinioClient(&config)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	objectCh := client.ListObjects(ctx, config.Bucket, minio.ListObjectsOptions{
+		Prefix:    "",
+		Recursive: true,
+	})
+	for object := range objectCh {
+		err := client.RemoveObject(ctx, config.Bucket, object.Key, minio.RemoveObjectOptions{})
+		assert.Nil(t, err)
+	}
+
+	err := client.RemoveBucket(context.Background(), config.Bucket)
+
+	assert.Nil(t, err)
 }
 
 func testPreview(t *testing.T, app *gin.Engine) {
@@ -78,29 +110,15 @@ func TestEngineWithoutIntegrations(t *testing.T) {
 	})
 }
 
-func TestEngineWithIntegrations(t *testing.T) {
-	if _, exists := os.LookupEnv("TESTS_ENABLE_INTEGRATIONS"); !exists {
-		t.Skipf("TESTS_ENABLE_INTEGRATIONS disabled")
-	}
-	app := GetGinApp(ReadConfigFromEnvs())
-
-	w := httptest.NewRecorder()
-	inputComment := CommentModelInput{
-		Author:       s("Test user Alex"),
-		Email:        s("alex@example.com"),
-		Website:      nil,
-		Text:         "Hello, _world_",
-		Parent:       nil,
-		Title:        nil,
-		Notification: 0,
-	}
+func postComment(t *testing.T, app *gin.Engine, inputComment *CommentModelInput, uri string) CommentModelOutput {
 	inputCommentData, err := json.Marshal(inputComment)
 	assert.Nil(t, err)
 	req, _ := http.NewRequest(
 		"POST",
-		"/new?uri=example.com",
+		"/new?uri="+uri,
 		strings.NewReader(string(inputCommentData)),
 	)
+	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
 
 	assert.Equal(t, 201, w.Code)
@@ -109,12 +127,18 @@ func TestEngineWithIntegrations(t *testing.T) {
 
 	json.Unmarshal([]byte(resultBody), &resultModel)
 
-	assert.Equal(t, "Test user Alex", *resultModel.Author)
+	assert.Equal(t, *inputComment.Author, *resultModel.Author)
+	return resultModel
+}
 
-	w = httptest.NewRecorder()
-	req, _ = http.NewRequest(
+func getCommentsForPage(t *testing.T,
+	app *gin.Engine,
+	uri string) int {
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(
 		"GET",
-		"/?uri=example.com",
+		"/?uri="+uri,
 		nil,
 	)
 	app.ServeHTTP(w, req)
@@ -127,8 +151,56 @@ func TestEngineWithIntegrations(t *testing.T) {
 	assert.True(t, exists)
 	totalRepliesTyped, err := getFloat(totalReplies)
 	assert.Nil(t, err)
-	assert.True(t, math.Abs(1-totalRepliesTyped) < 0.1)
+	return int(totalRepliesTyped)
+}
 
-	// allPageComments, exists := pageCommentsData["replies"]
-	assert.True(t, exists)
+func likeDislikeComment(t *testing.T, app *gin.Engine, commentId int64, action string) int {
+	assert.True(t, action == "like" || action == "dislike")
+	request_url := fmt.Sprintf("/id/%v/%v", commentId, action)
+	req, _ := http.NewRequest(
+		"POST",
+		request_url,
+		nil,
+	)
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, req)
+	return w.Code
+}
+
+func TestEngineWithIntegrations(t *testing.T) {
+	// really big single test for many things in one.
+	// Not a great solution, but simple enough for good covearge/code ratio
+	if _, exists := os.LookupEnv("TESTS_ENABLE_INTEGRATIONS"); !exists {
+		t.Skipf("TESTS_ENABLE_INTEGRATIONS disabled")
+	}
+	testConfig := ReadConfigFromEnvs()
+	testConfig.Minio.Bucket = "test"
+	app := GetGinApp(testConfig)
+	defer postDeleteS3Bucket(t, *testConfig.Minio)
+
+	// naive negative check
+	for _, action := range []string{"like", "dislike"} {
+		assert.Equal(t, 422, likeDislikeComment(t, app, 41, action))
+	}
+
+	inputComment := getFakeInputComment()
+	singleComment := postComment(t, app, &inputComment, "example.com/single")
+	for _, action := range []string{"like", "dislike"} {
+		assert.Equal(t, 200, likeDislikeComment(t, app, singleComment.Id, action))
+	}
+	postComment(t, app, &inputComment, "example.com/extra")
+	postComment(t, app, &inputComment, "example.com/extra")
+
+	for ind := 0; ind < 2; ind++ {
+		singleCommentsCount := getCommentsForPage(t, app, "example.com/single")
+		assert.Equal(t, 1, singleCommentsCount)
+	}
+
+	for ind := 0; ind < 2; ind++ {
+		emptyCommentsCount := getCommentsForPage(t, app, "example.com/empty")
+		assert.Equal(t, 0, emptyCommentsCount)
+	}
+
+	manyCommentsCount := getCommentsForPage(t, app, "example.com/extra")
+	assert.Equal(t, 2, manyCommentsCount)
 }
