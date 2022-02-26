@@ -61,35 +61,6 @@ func NewS3CommentsStorage(config MinioConfig) (*S3CommentsBackend, error) {
 			Help: "Number of S3 requests to comments storage",
 		}, []string{"operation", "target"}),
 	}, nil
-	/*
-		res := MemoryCommentsBackend{
-			lastId:          2,
-			commentsStorage: make(map[string][]int32),
-			commentItems:    make(map[int32]*CommentModelOutput),
-		}
-		res.commentsStorage["/s3-comment.html"] = make([]int32, 0)
-		res.commentsStorage["/s3-comment.html"] = append(
-			res.commentsStorage["/s3-comment.html"],
-			1,
-		)
-		res.commentsStorage["/s3-comment.html"] = append(
-			res.commentsStorage["/s3-comment.html"],
-			2,
-		)
-		res.commentItems[1] = &CommentModelOutput{
-			Id: 1, Parent: nil, Created: 1642930664.2549465,
-			Modified: nil, Mode: 1, Text: "<p>Hello, world (new)</p>", Author: s("Hippomoto"),
-			Website: nil, Likes: 0, Dislikes: 0, Hash: "e4da2aacd5dc", TotalRelies: 0,
-			HiddenReplies: 0, Replies: make([]CommentModelOutput, 0, 1),
-		}
-		res.commentItems[2] = &CommentModelOutput{
-			Id: 2, Parent: nil, Created: 1642930664.2549465,
-			Modified: nil, Mode: 1, Text: "<p>А этот <strong>посильнее</strong> </p>", Author: s("Blanket"),
-			Website: nil, Likes: 0, Dislikes: 0, Hash: "e4da2aacd5dc", TotalRelies: 0,
-			HiddenReplies: 0, Replies: make([]CommentModelOutput, 0, 1),
-		}
-		return &res, nil
-	*/
 }
 
 func getCommetObjectName(commentId int64) string {
